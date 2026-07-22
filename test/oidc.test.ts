@@ -21,4 +21,22 @@ describe("normalizeReturnTo", () => {
       "https://jetkvm.example.com/devices",
     );
   });
+
+  it("allows device /adopt return URLs during device adoption", () => {
+    expect(
+      normalizeReturnTo("http://10.0.0.21/adopt", appHostname, true),
+    ).toBe("http://10.0.0.21/adopt");
+  });
+
+  it("rejects device return URLs outside /adopt during device adoption", () => {
+    expect(
+      normalizeReturnTo("http://10.0.0.21/evil", appHostname, true),
+    ).toBe("https://jetkvm.example.com/devices");
+  });
+
+  it("rejects off-origin /adopt return URLs without device adoption", () => {
+    expect(
+      normalizeReturnTo("http://10.0.0.21/adopt", appHostname, false),
+    ).toBe("https://jetkvm.example.com/devices");
+  });
 });

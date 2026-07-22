@@ -19,6 +19,7 @@ const CONTROL_CHARACTERS = /[\u0000-\u001F\u007F]/g;
 export const normalizeReturnTo = (
   returnTo: unknown,
   appHostname = APP_HOSTNAME,
+  allowDeviceAdoptReturn = false,
 ) => {
   const fallback = `${appHostname}/devices`;
   if (typeof returnTo !== "string") return fallback;
@@ -29,8 +30,22 @@ export const normalizeReturnTo = (
   try {
     const url = new URL(sanitized, appHostname);
     const appUrl = new URL(appHostname || "");
-    if (url.origin !== appUrl.origin) return fallback;
-    return url.toString();
+    if (url.origin === appUrl.origin) return url.toString();
+
+    // Device adoption flow: the return URL points at the device's own web
+    // UI (its /adopt page), which necessarily lives on a different origin
+    // (e.g. http://10.0.0.21/adopt). Only allow this when the login was
+    // initiated with a deviceId, and only for the /adopt path, so regular
+    // logins keep full open-redirect protection.
+    if (
+      allowDeviceAdoptReturn &&
+      (url.protocol === "http:" || url.protocol === "https:") &&
+      url.pathname === "/adopt"
+    ) {
+      return url.toString();
+    }
+
+    return fallback;
   } catch {
     return fallback;
   }
@@ -45,7 +60,11 @@ export const Login = async (req: express.Request, res: express.Response) => {
   req.session!.csrf = state.get("csrf");
 
   req.session!.deviceId = req.body.deviceId;
-  req.session!.returnTo = normalizeReturnTo(req.body.returnTo);
+  req.session!.returnTo = normalizeReturnTo(
+    req.body.returnTo,
+    APP_HOSTNAME,
+    Boolean(req.body.deviceId),
+  );
 
   const code_verifier = generators.codeVerifier();
   const code_challenge = generators.codeChallenge(code_verifier);
@@ -82,7 +101,11 @@ export const Callback = async (req: express.Request, res: express.Response) => {
   }
 
   const deviceId = req.session?.deviceId as string | undefined;
-  const returnTo = normalizeReturnTo(req.session?.returnTo);
+  const returnTo = normalizeReturnTo(
+    req.session?.returnTo,
+    APP_HOSTNAME,
+    Boolean(deviceId),
+  );
 
   req.session!.csrf = null;
   req.session!.returnTo = null;
